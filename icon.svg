@@ -1,0 +1,8 @@
+<svg viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg">
+  <rect width="180" height="180" rx="20%" fill="#7c3aed"/>
+  <!-- Scissors -->
+  <circle cx="72" cy="120" r="16" fill="none" stroke="#fff" stroke-width="6"/>
+  <circle cx="108" cy="120" r="16" fill="none" stroke="#fff" stroke-width="6"/>
+  <line x1="84" y1="108" x2="108" y2="56" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+  <line x1="96" y1="108" x2="72" y2="56" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+</svg>
