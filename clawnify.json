@@ -1,0 +1,47 @@
+{
+  "$schema": "https://app.clawnify.com/schema/v1/clawnify.json",
+  "version": 1,
+  "name": "Salon & Booking Manager",
+  "description": "Appointment scheduling and business management for salons, spas, barbershops, tattoo studios, nail salons, pet groomers, personal trainers, yoga studios, med spas, physiotherapy clinics, tutoring centers, and any appointment-based business. Like Salonist, Fresha, Square Appointments, or Vagaro.",
+  "icon": "icon.svg",
+  "tags": ["booking", "appointments", "salon", "scheduling"],
+
+  "app": {
+    "framework": "preact+hono",
+    "database": true,
+    "storage": false
+  },
+
+  "deploy": {
+    "title": "Deploy your Booking Manager",
+    "subtitle": "Like Fresha or Vagaro — customized for your business in minutes",
+    "prompts": [
+      {
+        "key": "business_type",
+        "label": "What kind of business?",
+        "placeholder": "e.g. Hair salon, barbershop, yoga studio, pet groomer",
+        "required": true
+      },
+      {
+        "key": "company_name",
+        "label": "Business name",
+        "placeholder": "e.g. The Style Lounge",
+        "required": true
+      },
+      {
+        "key": "services",
+        "label": "What services do you offer?",
+        "type": "textarea",
+        "placeholder": "e.g. Haircut ($35, 30min), Color ($120, 2hr), Blowout ($50, 45min)..."
+      },
+      {
+        "key": "details",
+        "label": "Any other details?",
+        "type": "textarea",
+        "placeholder": "Staff names, brand colors, opening hours, special features..."
+      }
+    ]
+  },
+
+  "agent": "agent.md"
+}
