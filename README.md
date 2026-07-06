@@ -1,10 +1,10 @@
+<img src="readme-banner.png" alt="Open Salon preview" width="100%" />
+
 # Open Salon: The Open-Source Salonist & Fresha Alternative
 
 An appointment booking and business management app for salons, spas, barbershops, tattoo studios, and any appointment-based business. Part of the [OpenClaw](https://github.com/openclaw/openclaw) ecosystem. Zero cloud dependencies — runs locally with SQLite.
 
 Built with **Preact + Tailwind CSS v4 + shadcn/ui + Hono + SQLite**. Ships with a day calendar with staff columns, appointment scheduling, client database, service catalog, product inventory, and blocked time slots.
-
-<img width="1728" height="991" alt="Image" src="https://github.com/user-attachments/assets/76b121ae-32f7-49fd-bf97-46475c014603" />
 
 ## What Is It?
 
