@@ -8,7 +8,8 @@
     "build": "vite build"
   },
   "dependencies": {
-    "@clawnify/db": "^0.2.0",
+    "@clawnify/app": "^0.1.0",
+    "@clawnify/db": "^0.4.1",
     "@hono/zod-openapi": "^0.18.0",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",

@@ -1,13 +1,12 @@
-import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { initDB, query, get, run } from "./db.js";
+import { createApp, createRoute, z } from "@clawnify/app";
+import { query, get, run } from "./db.js";
 
 type Env = { Bindings: { DB: D1Database } };
 
-const app = new OpenAPIHono<Env>();
-
-app.use("*", async (c, next) => {
-  initDB(c.env);
-  await next();
+const app = createApp<Env>({
+  title: "Salon & Booking Manager",
+  version: "1.0.0",
+  description: "Appointment scheduling and business management for salons, spas, and other appointment-based businesses.",
 });
 
 // ── Shared Schemas ─────────────────────────────────────────────────
