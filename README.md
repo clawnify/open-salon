@@ -2,7 +2,7 @@
 
 # OpenSalon: The Open-Source Salonist & Fresha Alternative
 
-[![Deploy with Clawnify](https://app.clawnify.com/deploy-button.svg)](https://app.clawnify.com/deploy?repo=clawnify/open-salon)
+[![Deploy with Clawnify](https://app.clawnify.com/deploy-button.svg)](https://app.clawnify.com/deploy?repo=clawnify/OpenSalon)
 
 An appointment booking and business management app for salons, spas, barbershops, tattoo studios, and any appointment-based business. Part of the [OpenClaw](https://github.com/openclaw/openclaw) ecosystem. Zero cloud dependencies — runs locally with SQLite.
 
@@ -53,7 +53,7 @@ OpenSalon is **vertical-agnostic** — configure services, pricing, and staff fo
 ## Quickstart
 
 ```bash
-git clone https://github.com/clawnify/open-salon.git
+git clone https://github.com/clawnify/OpenSalon.git
 cd open-salon
 pnpm install
 pnpm run dev
