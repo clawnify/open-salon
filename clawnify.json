@@ -1,7 +1,7 @@
 {
   "$schema": "https://app.clawnify.com/schema/v1/clawnify.json",
   "version": 1,
-  "name": "Salon & Booking Manager",
+  "name": "OpenSalon",
   "description": "Appointment scheduling and business management for salons, spas, barbershops, tattoo studios, nail salons, pet groomers, personal trainers, yoga studios, med spas, physiotherapy clinics, tutoring centers, and any appointment-based business. Like Salonist, Fresha, Square Appointments, or Vagaro.",
   "icon": "icon.svg",
   "tags": ["booking", "appointments", "salon", "scheduling"],

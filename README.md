@@ -1,6 +1,6 @@
-<img src="readme-banner.png" alt="Open Salon preview" width="100%" />
+<img src="readme-banner.png" alt="OpenSalon preview" width="100%" />
 
-# Open Salon: The Open-Source Salonist & Fresha Alternative
+# OpenSalon: The Open-Source Salonist & Fresha Alternative
 
 [![Deploy with Clawnify](https://app.clawnify.com/deploy-button.svg)](https://app.clawnify.com/deploy?repo=clawnify/open-salon)
 
@@ -10,13 +10,13 @@ Built with **Preact + Tailwind CSS v4 + shadcn/ui + Hono + SQLite**. Ships with 
 
 ## What Is It?
 
-Open Salon is a production-ready appointment scheduling platform designed for the OpenClaw community. Think of it as an open-source alternative to **Salonist**, **Fresha**, **Square Appointments**, **Vagaro**, or **Booksy** — a complete booking and staff management system you can self-host, customize, and embed in any SaaS product.
+OpenSalon is a production-ready appointment scheduling platform designed for the OpenClaw community. Think of it as an open-source alternative to **Salonist**, **Fresha**, **Square Appointments**, **Vagaro**, or **Booksy** — a complete booking and staff management system you can self-host, customize, and embed in any SaaS product.
 
 Unlike Salonist or Fresha, this runs entirely on your own infrastructure. No per-user fees, no booking commissions, no vendor lock-in. Manage your entire appointment-based operation from scheduling to inventory.
 
 ## Built for Every Appointment-Based Business
 
-Open Salon is **vertical-agnostic** — configure services, pricing, and staff for any industry:
+OpenSalon is **vertical-agnostic** — configure services, pricing, and staff for any industry:
 
 | Industry | Example Services |
 |----------|-----------------|

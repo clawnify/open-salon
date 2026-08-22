@@ -4,7 +4,7 @@ import { query, get, run } from "./db.js";
 type Env = { Bindings: { DB: D1Database } };
 
 const app = createApp<Env>({
-  title: "Salon & Booking Manager",
+  title: "OpenSalon",
   version: "1.0.0",
   description: "Appointment scheduling and business management for salons, spas, and other appointment-based businesses.",
 });
