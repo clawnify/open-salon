@@ -4,3 +4,4 @@ data.db
 .DS_Store
 *.log
 .vite
+.wrangler

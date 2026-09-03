@@ -1,4 +1,4 @@
-export type View = "dashboard" | "calendar" | "appointments" | "clients" | "staff" | "services" | "products";
+export type View = "dashboard" | "calendar" | "appointments" | "clients" | "staff" | "services" | "products" | "reports";
 
 export type AppointmentStatus = "booked" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
 
@@ -130,3 +130,75 @@ export interface StaffLookup {
   name: string;
   color: string;
 }
+
+// ── Checkout / till ───────────────────────────────────────────────────
+
+export interface SaleItem {
+  id: number;
+  sale_id: string;
+  line_no: number;
+  kind: "service" | "product";
+  ref_id: number | null;
+  name: string;
+  unit_price: number;
+  qty: number;
+  line_total: number;
+}
+
+export interface Sale {
+  id: string;
+  status: string;
+  appointment_id: number | null;
+  client_id: number | null;
+  staff_id: number | null;
+  subtotal: number;
+  discount: number;
+  tip: number;
+  total: number;
+  payment_method: string;
+  note: string;
+  created_at: string;
+  closed_at: string | null;
+  client_name?: string | null;
+  staff_name?: string | null;
+  appointment_identifier?: string | null;
+  items?: SaleItem[];
+}
+
+export interface StaffTakings {
+  staff_id: number | null;
+  staff_name: string;
+  staff_color: string;
+  sale_count: number;
+  service_revenue: number;
+  retail_revenue: number;
+  discount: number;
+  tips: number;
+  total: number;
+}
+
+export interface DayTakings {
+  date: string;
+  sale_count: number;
+  subtotal: number;
+  discount: number;
+  tips: number;
+  total: number;
+}
+
+export interface TakingsReport {
+  from: string;
+  to: string;
+  totals: {
+    sale_count: number;
+    service_revenue: number;
+    retail_revenue: number;
+    discount: number;
+    tips: number;
+    total: number;
+  };
+  staff: StaffTakings[];
+  days: DayTakings[];
+}
+
+export interface DateRange { from: string; to: string }

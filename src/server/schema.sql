@@ -149,3 +149,82 @@ CREATE INDEX IF NOT EXISTS idx_blocked_slots_date ON blocked_slots(blocked_date)
 CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name);
 CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
 CREATE INDEX IF NOT EXISTS idx_services_category ON services(category);
+
+-- ── Checkout / till ────────────────────────────────────────────────────
+--
+-- A sale is the money record: what was actually taken, as opposed to
+-- `appointments.total_price`, which is what was quoted when the booking was
+-- made. Keeping them separate is the whole point — the gap between booked and
+-- taken (discounts given, tips earned, retail added at the desk) is what the
+-- staff report is made of, and overwriting the quote would destroy it.
+--
+-- `appointment_id` is nullable on purpose: a walk-in buying shampoo is a sale
+-- with no appointment. Square models this the same way — its Order object
+-- carries no booking reference at all.
+--
+-- WRITE ORDER MATTERS. There is no transaction available here: the app's db
+-- surface (@clawnify/db query/get/run) is one statement per call, with no
+-- multi-statement batching on either supported storage backend. Foreign keys
+-- are enforced, so children cannot be written before their parent. The sale
+-- is therefore written header-first as
+-- status='open', then its items, and the final flip to 'closed' is the commit
+-- point. Reports count 'closed' only, so a half-written sale is invisible
+-- rather than wrong, and replaying the same sale id completes it instead of
+-- duplicating it.
+CREATE TABLE IF NOT EXISTS sales (
+  -- Caller-supplied UUID. This is the idempotency key: retrying a checkout
+  -- with the same id resumes it rather than ringing it up twice.
+  id TEXT PRIMARY KEY,
+  status TEXT NOT NULL DEFAULT 'open',
+  appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
+  client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+  staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
+  -- Money is REAL to match `services.price` / `appointments.total_price`.
+  -- Integer cents would be more correct; two money conventions in one app
+  -- would be worse. Totals are rounded to 2dp as they are computed.
+  subtotal REAL NOT NULL DEFAULT 0,
+  discount REAL NOT NULL DEFAULT 0,
+  tip REAL NOT NULL DEFAULT 0,
+  total REAL NOT NULL DEFAULT 0,
+  payment_method TEXT NOT NULL DEFAULT 'cash',
+  note TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now')),
+  closed_at TEXT
+);
+
+-- One row per line on the ticket. `name` and `unit_price` are snapshots: a
+-- closed sale must keep reading the same way after someone edits the service
+-- catalogue or a product price.
+CREATE TABLE IF NOT EXISTS sale_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sale_id TEXT NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+  -- Position on the ticket. Paired with sale_id this makes writing a line
+  -- idempotent (INSERT OR IGNORE) while still allowing the same product to
+  -- appear twice, which is a normal thing for a front desk to do.
+  line_no INTEGER NOT NULL,
+  kind TEXT NOT NULL,                -- 'service' | 'product'
+  ref_id INTEGER,                    -- services.id or products.id, if it still exists
+  name TEXT NOT NULL,
+  unit_price REAL NOT NULL DEFAULT 0,
+  qty INTEGER NOT NULL DEFAULT 1,
+  line_total REAL NOT NULL DEFAULT 0,
+  UNIQUE (sale_id, line_no)
+);
+
+-- Why this table exists: `UPDATE products SET stock = stock - ?` is not
+-- idempotent, and without a transaction a retried checkout would decrement
+-- twice. This row is the guard — INSERT OR IGNORE on (sale_id, product_id)
+-- succeeds exactly once per sale, and the stock decrement is applied only
+-- when it does. It doubles as the audit trail for reconciling on-hand counts.
+CREATE TABLE IF NOT EXISTS stock_movements (
+  sale_id TEXT NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  qty INTEGER NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (sale_id, product_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sales_status_closed ON sales(status, closed_at);
+CREATE INDEX IF NOT EXISTS idx_sales_staff ON sales(staff_id);
+CREATE INDEX IF NOT EXISTS idx_sales_appointment ON sales(appointment_id);
+CREATE INDEX IF NOT EXISTS idx_sale_items_sale ON sale_items(sale_id);

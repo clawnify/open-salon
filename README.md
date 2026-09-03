@@ -41,13 +41,17 @@ OpenSalon is **vertical-agnostic** — configure services, pricing, and staff fo
 - **Client management** — full database with contact info, notes, preferences, and appointment history
 - **Staff management** — team directory with color coding, titles/roles, activate/deactivate, and appointment counts
 - **Service catalog** — configurable services with duration, price, color, and category grouping
+- **Checkout with built-in tipping** — close out an appointment on an itemised ticket: booked services, retail products added at the desk, a percentage or flat discount, preset (15/18/20%) or custom tips, and a payment method. Totals are priced on the server, so the browser can't set them
+- **Retail sold through the till** — add products to any ticket; stock is drawn down automatically and recorded in a `stock_movements` audit trail
+- **Staff takings report** — per staff member and per day: service revenue, retail revenue, discounts and tips, with a footer aggregate. This is the *booked vs taken* gap — appointments keep the quoted price, sales record what was actually paid
+- **Itemised receipts** — `GET /api/sales/:id` returns a full line-by-line receipt for one visit, with prices snapshotted at the time of sale
 - **Product inventory** — track retail products with cost/price, stock levels, low stock alerts, brand, and SKU
 - **Multi-service bookings** — select multiple services per appointment with automatic duration and price calculation
 - **Status workflow** — booked → confirmed → in progress → completed (or cancelled/no show)
 - **Activity notes** — timestamped notes on every appointment for internal communication
 - **Dashboard** — at-a-glance KPIs: today's appointments, upcoming count, revenue, client count, low stock alerts
 - **Search & filter** — find appointments by status, search clients by name/email/phone
-- **URL routing** — bookmarkable pages (`/calendar`, `/appointments/123`, `/clients`, `/staff`, `/services`, `/products`)
+- **URL routing** — bookmarkable pages (`/calendar`, `/appointments/123`, `/clients`, `/staff`, `/services`, `/products`, `/reports`)
 - **Dual-mode UI** — human-optimized + AI-agent-optimized (`?agent`)
 
 ## Quickstart
@@ -164,7 +168,28 @@ appointment_notes    (id, appointment_id, content)
 blocked_slots        (id, staff_id, blocked_date, start_time, end_time, reason)
 products             (id, name, brand, category, sku, price, cost, stock,
                       low_stock_alert)
+
+-- Checkout / till. A sale is what was taken; appointments.total_price stays
+-- what was quoted. `appointment_id` is nullable so a walk-in retail sale is a
+-- first-class sale with no booking behind it.
+sales                (id TEXT/uuid, status, appointment_id, client_id, staff_id,
+                      subtotal, discount, tip, total, payment_method, note,
+                      created_at, closed_at)
+sale_items           (id, sale_id, line_no, kind, ref_id, name, unit_price,
+                      qty, line_total)          -- name/price snapshotted
+stock_movements      (sale_id, product_id, qty) -- PK (sale_id, product_id);
+                                                -- the once-only stock guard
 ```
+
+**How a sale is written.** The database layer executes one statement per call
+and offers no multi-statement transaction, and foreign keys are enforced, so
+child rows can't be written before their parent. A sale is therefore written
+header-first as `status='open'`, then its lines, and the flip to `'closed'` is
+the commit point. Reports count closed sales only, which makes a half-written
+sale invisible rather than wrong. The `id` is a caller-minted UUID and doubles
+as an idempotency key — posting the same sale twice returns the original
+receipt instead of charging again, and `stock_movements` is keyed
+`(sale_id, product_id)` so a retried checkout can never draw stock twice.
 
 ### API Endpoints
 
@@ -200,10 +225,14 @@ products             (id, name, brand, category, sku, price, cost, stock,
 | POST | `/api/products` | Create a product |
 | PUT | `/api/products/:id` | Update a product |
 | DELETE | `/api/products/:id` | Delete a product |
+| POST | `/api/sales` | Ring up a ticket (idempotent on the caller-supplied `id`) |
+| GET | `/api/sales` | List closed sales (date / staff / client filters) |
+| GET | `/api/sales/:id` | Itemised receipt for one sale |
+| GET | `/api/reports/takings` | Takings per staff member and per day |
 
 ## SEO Keywords
 
-Open-source salon management software, free appointment booking software, open-source Salonist alternative, open-source Fresha alternative, free barbershop scheduling software, open-source Square Appointments alternative, open-source Vagaro alternative, free spa management software, open-source Booksy alternative, salon booking app, appointment scheduling software, staff scheduling software, beauty salon management, open-source booking system, free nail salon software, tattoo studio management, pet grooming software, self-hosted appointment booking, open-source salon POS, free yoga studio software, physiotherapy scheduling software, tutoring booking software, med spa management software.
+Open-source salon management software, free appointment booking software, open-source Salonist alternative, open-source Fresha alternative, free barbershop scheduling software, open-source Square Appointments alternative, open-source Vagaro alternative, free spa management software, open-source Booksy alternative, salon booking app, appointment scheduling software, staff scheduling software, beauty salon management, open-source booking system, free nail salon software, tattoo studio management, pet grooming software, self-hosted appointment booking, open-source salon POS, free yoga studio software, physiotherapy scheduling software, tutoring booking software, med spa management software, salon software with built-in tipping, salon staff targets software, salon commission tracking, salon checkout software, aesthetic clinic software with staff management, salon retail sales tracking, barbershop tip tracking software.
 
 ## Community & Contributions
 

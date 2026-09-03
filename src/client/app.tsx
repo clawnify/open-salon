@@ -12,6 +12,7 @@ import { ClientDetail } from "./components/client-detail";
 import { StaffList } from "./components/staff-list";
 import { ServiceList } from "./components/service-list";
 import { ProductList } from "./components/product-list";
+import { Reports } from "./components/reports";
 import { ErrorBanner } from "./components/error-banner";
 
 export function App() {
@@ -47,6 +48,7 @@ export function App() {
       case "staff": return <StaffList />;
       case "services": return <ServiceList />;
       case "products": return <ProductList />;
+      case "reports": return <Reports />;
       default: return <Dashboard />;
     }
   };
