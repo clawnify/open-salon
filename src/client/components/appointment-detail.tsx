@@ -1,7 +1,8 @@
 import { useState } from "preact/hooks";
 import { useApp } from "../context";
-import { ArrowLeft, Trash2, Send, Clock, User, DollarSign } from "lucide-preact";
+import { ArrowLeft, Trash2, Send, Clock, User, DollarSign, Receipt } from "lucide-preact";
 import { Button } from "@/components/ui/button";
+import { CheckoutDialog } from "./checkout-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +15,7 @@ export function AppointmentDetail() {
     addAppointmentNote, deleteAppointmentNote, staffLookup,
   } = useApp();
   const [noteText, setNoteText] = useState("");
+  const [checkingOut, setCheckingOut] = useState(false);
 
   if (!apt) return null;
 
@@ -34,6 +36,11 @@ export function AppointmentDetail() {
         </Button>
         <h1 className="flex-1 text-2xl font-bold">{apt.identifier}</h1>
         <StatusBadge status={apt.status} />
+        {apt.status !== "completed" && apt.status !== "cancelled" && (
+          <Button size="sm" onClick={() => setCheckingOut(true)}>
+            <Receipt className="mr-1 h-3.5 w-3.5" /> Checkout
+          </Button>
+        )}
         <Button variant="destructive" size="sm" onClick={() => deleteAppointment(apt.id)}>
           <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
         </Button>
@@ -155,6 +162,10 @@ export function AppointmentDetail() {
           </Card>
         </div>
       </div>
+
+      {checkingOut && (
+        <CheckoutDialog appointment={apt} onClose={() => setCheckingOut(false)} />
+      )}
     </div>
   );
 }

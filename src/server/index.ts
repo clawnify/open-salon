@@ -1,5 +1,7 @@
 import { createApp, createRoute, z } from "@clawnify/app";
 import { query, get, run } from "./db.js";
+import { CheckoutError, round2 } from "./checkout.js";
+import { recordSale, readSale, staffTakings, dailyTakings } from "./sales.js";
 
 type Env = { Bindings: { DB: D1Database } };
 
@@ -1006,6 +1008,239 @@ app.openapi(deleteProduct, async (c) => {
   const { id } = c.req.valid("param");
   await run("DELETE FROM products WHERE id = ?", [id]);
   return c.json({ ok: true }, 200);
+});
+
+
+// ── Checkout / till ────────────────────────────────────────────────
+//
+// `appointments.total_price` is what was quoted at booking. A sale is what was
+// actually taken. Keeping both is the point: the gap between them — discounts
+// given, tips earned, retail added at the desk — is what the staff report is
+// made of.
+
+const SaleItemInputSchema = z.object({
+  kind: z.enum(["service", "product"]),
+  ref_id: z.number().int().nullable().optional(),
+  name: z.string(),
+  unit_price: z.number(),
+  qty: z.number().int(),
+});
+
+const AdjustmentSchema = z.object({
+  kind: z.enum(["percent", "amount"]),
+  value: z.number(),
+});
+
+const SaleItemSchema = z.object({
+  id: z.number().int(),
+  sale_id: z.string(),
+  line_no: z.number().int(),
+  kind: z.string(),
+  ref_id: z.number().int().nullable(),
+  name: z.string(),
+  unit_price: z.number(),
+  qty: z.number().int(),
+  line_total: z.number(),
+}).openapi("SaleItem");
+
+const SaleSchema = z.object({
+  id: z.string(),
+  status: z.string(),
+  appointment_id: z.number().int().nullable(),
+  client_id: z.number().int().nullable(),
+  staff_id: z.number().int().nullable(),
+  subtotal: z.number(),
+  discount: z.number(),
+  tip: z.number(),
+  total: z.number(),
+  payment_method: z.string(),
+  note: z.string(),
+  created_at: z.string(),
+  closed_at: z.string().nullable(),
+  client_name: z.string().nullable().optional(),
+  staff_name: z.string().nullable().optional(),
+  appointment_identifier: z.string().nullable().optional(),
+  items: z.array(SaleItemSchema).optional(),
+}).openapi("Sale");
+
+// Ring up a ticket.
+//
+// `id` is a UUID minted by the caller and is the idempotency key: posting the
+// same one twice returns the original receipt rather than charging again.
+// Totals are computed server-side from the lines — the caller sends intent
+// ("20% tip"), never the total.
+const createSale = createRoute({
+  method: "post",
+  path: "/api/sales",
+  request: {
+    body: { content: { "application/json": { schema: z.object({
+      id: z.string().openapi({ description: "Caller-minted UUID; also the idempotency key" }),
+      appointment_id: z.number().int().nullable().optional(),
+      client_id: z.number().int().nullable().optional(),
+      staff_id: z.number().int().nullable().optional(),
+      items: z.array(SaleItemInputSchema),
+      discount: AdjustmentSchema.optional(),
+      tip: AdjustmentSchema.optional(),
+      payment_method: z.enum(["cash", "card", "other"]),
+      note: z.string().optional(),
+    }) } } },
+  },
+  responses: {
+    201: { description: "Sale recorded", content: { "application/json": { schema: z.object({ sale: SaleSchema }) } } },
+    400: { description: "Rejected", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+app.openapi(createSale, async (c) => {
+  const body = c.req.valid("json");
+  try {
+    const sale = await recordSale(body);
+    return c.json({ sale }, 201);
+  } catch (err) {
+    // A CheckoutError is the caller's fault (bad line, impossible discount),
+    // so it comes back as a 400 with the reason. Anything else is ours.
+    if (err instanceof CheckoutError) {
+      return c.json({ error: err.message }, 400);
+    }
+    throw err;
+  }
+});
+
+// One receipt, itemised. Answers "what exactly did this client pay for?"
+// without piecing transactions together by hand.
+const getSale = createRoute({
+  method: "get",
+  path: "/api/sales/{id}",
+  request: { params: z.object({ id: z.string() }) },
+  responses: {
+    200: { description: "Sale", content: { "application/json": { schema: z.object({ sale: SaleSchema }) } } },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+app.openapi(getSale, async (c) => {
+  const { id } = c.req.valid("param");
+  const sale = await readSale(id);
+  if (!sale) return c.json({ error: "Sale not found" }, 404);
+  return c.json({ sale }, 200);
+});
+
+const listSales = createRoute({
+  method: "get",
+  path: "/api/sales",
+  request: {
+    query: z.object({
+      from: z.string().optional().openapi({ description: "YYYY-MM-DD, inclusive" }),
+      to: z.string().optional().openapi({ description: "YYYY-MM-DD, inclusive" }),
+      staff_id: z.string().optional(),
+      client_id: z.string().optional(),
+      limit: z.string().optional(),
+    }),
+  },
+  responses: {
+    200: { description: "Sales", content: { "application/json": { schema: z.object({ sales: z.array(SaleSchema) }) } } },
+  },
+});
+
+app.openapi(listSales, async (c) => {
+  const q = c.req.valid("query");
+  // Closed sales only. An open row is a checkout that never finished and is
+  // not money that was taken.
+  let where = "WHERE sa.status = 'closed'";
+  const params: unknown[] = [];
+  if (q.from) { where += " AND date(sa.closed_at) >= ?"; params.push(q.from); }
+  if (q.to) { where += " AND date(sa.closed_at) <= ?"; params.push(q.to); }
+  if (q.staff_id) { where += " AND sa.staff_id = ?"; params.push(Number(q.staff_id)); }
+  if (q.client_id) { where += " AND sa.client_id = ?"; params.push(Number(q.client_id)); }
+  const limit = Math.min(Math.max(Number(q.limit) || 100, 1), 500);
+
+  const sales = await query(
+    `SELECT sa.*, cl.name AS client_name, st.name AS staff_name,
+            a.identifier AS appointment_identifier
+     FROM sales sa
+     LEFT JOIN clients cl ON cl.id = sa.client_id
+     LEFT JOIN staff st ON st.id = sa.staff_id
+     LEFT JOIN appointments a ON a.id = sa.appointment_id
+     ${where}
+     ORDER BY sa.closed_at DESC
+     LIMIT ?`,
+    [...params, limit],
+  );
+  return c.json({ sales }, 200);
+});
+
+// Takings, split per staff member and per day. This is the report the
+// "staff targets" question is really asking for: what each person actually
+// brought in, separated into service work, retail and tips.
+const takingsReport = createRoute({
+  method: "get",
+  path: "/api/reports/takings",
+  request: {
+    query: z.object({
+      from: z.string().optional().openapi({ description: "YYYY-MM-DD, defaults to the 1st of this month" }),
+      to: z.string().optional().openapi({ description: "YYYY-MM-DD, defaults to today" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Takings",
+      content: { "application/json": { schema: z.object({
+        from: z.string(),
+        to: z.string(),
+        totals: z.object({
+          sale_count: z.number().int(),
+          service_revenue: z.number(),
+          retail_revenue: z.number(),
+          discount: z.number(),
+          tips: z.number(),
+          total: z.number(),
+        }),
+        staff: z.array(z.object({
+          staff_id: z.number().int().nullable(),
+          staff_name: z.string(),
+          staff_color: z.string(),
+          sale_count: z.number().int(),
+          service_revenue: z.number(),
+          retail_revenue: z.number(),
+          discount: z.number(),
+          tips: z.number(),
+          total: z.number(),
+        })),
+        days: z.array(z.object({
+          date: z.string(),
+          sale_count: z.number().int(),
+          subtotal: z.number(),
+          discount: z.number(),
+          tips: z.number(),
+          total: z.number(),
+        })),
+      }) } },
+    },
+  },
+});
+
+app.openapi(takingsReport, async (c) => {
+  const q = c.req.valid("query");
+  const today = new Date().toISOString().split("T")[0];
+  const to = q.to || today;
+  const from = q.from || `${today.slice(0, 7)}-01`;
+
+  const staff = await staffTakings(from, to);
+  const days = await dailyTakings(from, to);
+
+  const totals = staff.reduce(
+    (acc, row) => ({
+      sale_count: acc.sale_count + row.sale_count,
+      service_revenue: round2(acc.service_revenue + row.service_revenue),
+      retail_revenue: round2(acc.retail_revenue + row.retail_revenue),
+      discount: round2(acc.discount + row.discount),
+      tips: round2(acc.tips + row.tips),
+      total: round2(acc.total + row.total),
+    }),
+    { sale_count: 0, service_revenue: 0, retail_revenue: 0, discount: 0, tips: 0, total: 0 },
+  );
+
+  return c.json({ from, to, totals, staff, days }, 200);
 });
 
 export default app;

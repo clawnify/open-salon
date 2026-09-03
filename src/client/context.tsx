@@ -2,7 +2,7 @@ import { createContext } from "preact";
 import { useContext } from "preact/hooks";
 import type {
   Appointment, Client, Staff, Service, Product, BlockedSlot, Stats, PaginatedState,
-  ClientLookup, StaffLookup,
+  ClientLookup, StaffLookup, TakingsReport, DateRange, Sale,
 } from "./types";
 
 export interface AppContextValue {
@@ -83,6 +83,13 @@ export interface AppContextValue {
   // Lookups
   clientLookup: ClientLookup[];
   staffLookup: StaffLookup[];
+
+  // Checkout / till
+  takings: TakingsReport | null;
+  takingsRange: DateRange;
+  setTakingsRange: (r: DateRange) => void;
+  loadTakings: () => Promise<void>;
+  recordSale: (payload: Record<string, unknown>) => Promise<Sale>;
 
   loading: boolean;
   error: string | null;

@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from "preact/hooks";
 import { api } from "../api";
 import type {
   Appointment, Client, Staff, Service, Product, BlockedSlot, Stats, PaginatedState,
-  ClientLookup, StaffLookup,
+  ClientLookup, StaffLookup, TakingsReport, DateRange, Sale,
 } from "../types";
 import type { AppContextValue } from "../context";
 
@@ -39,6 +39,11 @@ export function useAppState(isAgent: boolean, navigate: (to: string) => void): A
   const [products, setProducts] = useState<Product[]>([]);
   const [productsPag, setProductsPag] = useState<PaginatedState>({ page: 1, limit: 50, total: 0 });
   const [productsSearch, setProductsSearch] = useState("");
+
+  // ── Takings ──
+  const monthStart = `${todayStr.slice(0, 7)}-01`;
+  const [takings, setTakings] = useState<TakingsReport | null>(null);
+  const [takingsRange, setTakingsRange] = useState<DateRange>({ from: monthStart, to: todayStr });
 
   // Lookups
   const [clientLookup, setClientLookup] = useState<ClientLookup[]>([]);
@@ -302,6 +307,33 @@ export function useAppState(isAgent: boolean, navigate: (to: string) => void): A
     await fetchStats();
   }, [productsPag, productsSearch, fetchProducts, fetchStats]);
 
+  // ── Checkout ──
+
+  const loadTakings = useCallback(async () => {
+    const q = new URLSearchParams({ from: takingsRange.from, to: takingsRange.to });
+    const data = await api<TakingsReport>("GET", `/api/reports/takings?${q}`);
+    setTakings(data);
+  }, [takingsRange]);
+
+  const recordSale = useCallback(async (payload: Record<string, unknown>) => {
+    const { sale } = await api<{ sale: Sale }>("POST", "/api/sales", payload);
+    // A sale moves three things at once: the appointment is completed, retail
+    // stock is drawn down, and the takings change. Refresh all of them.
+    await Promise.all([
+      fetchStats(),
+      fetchProducts(productsPag, productsSearch),
+      loadTakings(),
+    ]);
+    if (payload.appointment_id) {
+      await Promise.all([
+        fetchAppointments(appointmentsPag, appointmentsSearch, appointmentsStatusFilter),
+        selectAppointment(Number(payload.appointment_id)),
+      ]);
+    }
+    return sale;
+  }, [fetchStats, fetchProducts, productsPag, productsSearch, loadTakings,
+      fetchAppointments, appointmentsPag, appointmentsSearch, appointmentsStatusFilter, selectAppointment]);
+
   return {
     navigate, isAgent, stats,
     appointments, appointmentsPag, setAppointmentsPage, appointmentsSearch, setAppointmentsSearch,
@@ -318,6 +350,7 @@ export function useAppState(isAgent: boolean, navigate: (to: string) => void): A
     products, productsPag, setProductsPage, productsSearch, setProductsSearch,
     addProduct, updateProduct, deleteProduct,
     clientLookup, staffLookup,
+    takings, takingsRange, setTakingsRange, loadTakings, recordSale,
     loading, error, setError,
   };
 }

@@ -1,5 +1,5 @@
 import { useApp } from "../context";
-import { Scissors, LayoutDashboard, CalendarDays, Clock, Users, UserCog, Sparkles, Package } from "lucide-preact";
+import { Scissors, LayoutDashboard, CalendarDays, Clock, Users, UserCog, Sparkles, Package, BarChart3 } from "lucide-preact";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,7 @@ const navItems: { view: View; path: string; label: string; icon: typeof LayoutDa
   { view: "staff", path: "/staff", label: "Staff", icon: UserCog },
   { view: "services", path: "/services", label: "Services", icon: Sparkles },
   { view: "products", path: "/products", label: "Products", icon: Package },
+  { view: "reports", path: "/reports", label: "Reports", icon: BarChart3 },
 ];
 
 export function Sidebar({ currentView }: { currentView: View }) {
