@@ -1,5 +1,6 @@
 import { useState } from "preact/hooks";
 import { useApp } from "../context";
+import type { Appointment, BlockedSlot } from "../types";
 import { ChevronLeft, ChevronRight, Plus, X, Ban } from "lucide-preact";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,12 +8,44 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CreateAppointment } from "./create-appointment";
 import { cn } from "@/lib/utils";
+import { packLanes } from "@/lib/overlap";
 
 const HOURS = Array.from({ length: 14 }, (_, i) => i + 7); // 7 AM to 8 PM
 
 function timeToMinutes(time: string): number {
   const [h, m] = time.split(":").map(Number);
   return h * 60 + m;
+}
+
+/**
+ * Lay a column's appointments and blocked slots out side by side.
+ *
+ * Blocked time is packed together with the bookings because it competes for the
+ * same person: drawing a booking over the top of a lunch break hid the break.
+ */
+function layOutColumn(
+  appointments: Appointment[],
+  blocked: BlockedSlot[],
+  dayStart: number,
+) {
+  return packLanes([
+    ...blocked.map((b) => ({
+      key: `b-${b.id}`, block: b, appointment: null as Appointment | null,
+      start: timeToMinutes(b.start_time) - dayStart,
+      end: timeToMinutes(b.end_time) - dayStart,
+    })),
+    ...appointments.map((a) => ({
+      key: `a-${a.id}`, block: null as BlockedSlot | null, appointment: a,
+      start: timeToMinutes(a.start_time) - dayStart,
+      end: timeToMinutes(a.end_time) - dayStart,
+    })),
+  ]);
+}
+
+/** Where a laid-out span sits across the width of its column. */
+function laneStyle(lane: number, lanes: number) {
+  const width = 100 / lanes;
+  return { left: `calc(${lane * width}% + 4px)`, width: `calc(${width}% - 8px)` };
 }
 
 function formatHour(h: number): string {
@@ -146,49 +179,47 @@ export function CalendarView() {
                     />
                   ))}
 
-                  {/* Blocked slots */}
-                  {memberBlocked.map((block) => {
-                    const startMin = timeToMinutes(block.start_time) - dayStart;
-                    const endMin = timeToMinutes(block.end_time) - dayStart;
-                    const top = (startMin / totalMinutes) * totalHeight;
-                    const height = ((endMin - startMin) / totalMinutes) * totalHeight;
-                    return (
-                      <div
-                        key={`b-${block.id}`}
-                        className="absolute inset-x-1 z-10 flex items-center justify-between rounded bg-muted/60 px-2 text-xs text-muted-foreground"
-                        style={{ top, height: Math.max(height, 20) }}
-                      >
-                        <span className="truncate">{block.reason || "Blocked"}</span>
-                        <button
-                          className="flex-shrink-0 rounded p-0.5 hover:bg-muted"
-                          onClick={(e) => { e.stopPropagation(); deleteBlockedSlot(block.id); }}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    );
-                  })}
+                  {layOutColumn(memberAppts, memberBlocked, dayStart).map((item) => {
+                    const top = (item.start / totalMinutes) * totalHeight;
+                    const height = ((item.end - item.start) / totalMinutes) * totalHeight;
+                    const lane = laneStyle(item.lane, item.lanes);
 
-                  {/* Appointments */}
-                  {memberAppts.map((apt) => {
-                    const startMin = timeToMinutes(apt.start_time) - dayStart;
-                    const endMin = timeToMinutes(apt.end_time) - dayStart;
-                    const top = (startMin / totalMinutes) * totalHeight;
-                    const height = ((endMin - startMin) / totalMinutes) * totalHeight;
+                    if (item.block) {
+                      const block = item.block;
+                      return (
+                        <div
+                          key={item.key}
+                          className="absolute z-10 flex items-center justify-between rounded bg-muted/60 px-2 text-xs text-muted-foreground"
+                          style={{ ...lane, top, height: Math.max(height, 20) }}
+                        >
+                          <span className="truncate">{block.reason || "Blocked"}</span>
+                          <button
+                            className="flex-shrink-0 rounded p-0.5 hover:bg-muted"
+                            onClick={(e) => { e.stopPropagation(); deleteBlockedSlot(block.id); }}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      );
+                    }
+
+                    const apt = item.appointment!;
                     const services = apt.appointment_services?.map((s) => s.service_name).filter(Boolean).join(", ");
                     return (
                       <button
-                        key={apt.id}
+                        key={item.key}
                         className={cn(
-                          "absolute inset-x-1 z-20 cursor-pointer overflow-hidden rounded-md border-l-[3px] px-2 py-1 text-left transition-shadow hover:shadow-md",
+                          "absolute z-20 cursor-pointer overflow-hidden rounded-md border-l-[3px] px-2 py-1 text-left transition-shadow hover:shadow-md",
                         )}
                         style={{
+                          ...lane,
                           top,
                           height: Math.max(height, 28),
                           backgroundColor: `${member.color}14`,
                           borderLeftColor: member.color,
                         }}
                         onClick={() => navigate(`/appointments/${apt.id}`)}
+                        title={`${apt.start_time} - ${apt.end_time} ${apt.client_name ?? ""}`}
                       >
                         <div className="text-[10px] font-medium text-muted-foreground">{apt.start_time} - {apt.end_time}</div>
                         <div className="truncate text-xs font-semibold">{apt.client_name}</div>
@@ -216,16 +247,15 @@ export function CalendarView() {
                   {HOURS.map((h) => (
                     <div key={h} className="absolute left-0 right-0 border-t border-dashed border-border/50" style={{ top: ((h * 60 - dayStart) / totalMinutes) * totalHeight }} />
                   ))}
-                  {unassigned.map((apt) => {
-                    const startMin = timeToMinutes(apt.start_time) - dayStart;
-                    const endMin = timeToMinutes(apt.end_time) - dayStart;
-                    const top = (startMin / totalMinutes) * totalHeight;
-                    const height = ((endMin - startMin) / totalMinutes) * totalHeight;
+                  {layOutColumn(unassigned, [], dayStart).map((item) => {
+                    const apt = item.appointment!;
+                    const top = (item.start / totalMinutes) * totalHeight;
+                    const height = ((item.end - item.start) / totalMinutes) * totalHeight;
                     return (
                       <button
-                        key={apt.id}
-                        className="absolute inset-x-1 z-20 cursor-pointer overflow-hidden rounded-md border-l-[3px] border-l-muted-foreground/40 bg-muted/30 px-2 py-1 text-left transition-shadow hover:shadow-md"
-                        style={{ top, height: Math.max(height, 28) }}
+                        key={item.key}
+                        className="absolute z-20 cursor-pointer overflow-hidden rounded-md border-l-[3px] border-l-muted-foreground/40 bg-muted/30 px-2 py-1 text-left transition-shadow hover:shadow-md"
+                        style={{ ...laneStyle(item.lane, item.lanes), top, height: Math.max(height, 28) }}
                         onClick={() => navigate(`/appointments/${apt.id}`)}
                       >
                         <div className="text-[10px] font-medium text-muted-foreground">{apt.start_time} - {apt.end_time}</div>

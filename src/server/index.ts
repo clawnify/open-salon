@@ -1,5 +1,6 @@
 import { createApp, createRoute, z } from "@clawnify/app";
 import { query, get, run } from "./db.js";
+import { findConflicts, describeConflicts, toMinutes, type Busy } from "./scheduling.js";
 
 type Env = { Bindings: { DB: D1Database } };
 
@@ -13,6 +14,16 @@ const app = createApp<Env>({
 
 const ErrorSchema = z.object({ error: z.string() }).openapi("Error");
 const OkSchema = z.object({ ok: z.boolean() }).openapi("Ok");
+
+const ConflictSchema = z.object({
+  error: z.string(),
+  conflicts: z.array(z.object({
+    kind: z.enum(["appointment", "blocked"]),
+    start_time: z.string(),
+    end_time: z.string(),
+    label: z.string(),
+  })),
+}).openapi("Conflict");
 
 const ClientSchema = z.object({
   id: z.number().int(),
@@ -131,6 +142,45 @@ function addMinutes(time: string, minutes: number): string {
   const hh = Math.floor(total / 60) % 24;
   const mm = total % 60;
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+/**
+ * What already occupies `staffId` on `date`: their other appointments, plus any
+ * time blocked off for lunch, holiday and the like.
+ *
+ * Cancelled appointments free the chair, and are the one status left out. That
+ * matches what `/api/calendar` draws, so the rule an owner sees is simply
+ * "if it is on the calendar, it is taken".
+ */
+async function busyFor(staffId: number, date: string, excludeAppointmentId?: number): Promise<Busy[]> {
+  const appts = await query<{ start_time: string; end_time: string; client_name: string | null }>(
+    `SELECT a.start_time, a.end_time, cl.name as client_name
+     FROM appointments a
+     LEFT JOIN clients cl ON cl.id = a.client_id
+     WHERE a.staff_id = ? AND a.scheduled_date = ? AND a.status != 'cancelled'
+       ${excludeAppointmentId ? "AND a.id != ?" : ""}`,
+    excludeAppointmentId ? [staffId, date, excludeAppointmentId] : [staffId, date],
+  );
+  const blocks = await query<{ start_time: string; end_time: string; reason: string | null }>(
+    "SELECT start_time, end_time, reason FROM blocked_slots WHERE staff_id = ? AND blocked_date = ?",
+    [staffId, date],
+  );
+  return [
+    ...appts.map((a): Busy => ({
+      kind: "appointment", start_time: a.start_time, end_time: a.end_time,
+      label: a.client_name || "another booking",
+    })),
+    ...blocks.map((b): Busy => ({
+      kind: "blocked", start_time: b.start_time, end_time: b.end_time,
+      label: b.reason || "blocked",
+    })),
+  ];
+}
+
+/** The staff member's name, for the conflict message. */
+async function staffName(staffId: number): Promise<string> {
+  const s = await get<{ name: string }>("SELECT name FROM staff WHERE id = ?", [staffId]);
+  return s?.name || "";
 }
 
 // ── Stats ──────────────────────────────────────────────────────────
@@ -355,10 +405,14 @@ const createAppointment = createRoute({
       is_recurring: z.number().int().optional(),
       recurrence_interval: z.string().optional(),
       service_ids: z.array(z.number().int()).optional(),
+      allow_conflict: z.boolean().optional().openapi({
+        description: "Book even though the staff member is already busy then. Salons do deliberately overlap (a colour processes while the next client is cut), so this is allowed, but never by accident.",
+      }),
     }) } } },
   },
   responses: {
     201: { description: "Created", content: { "application/json": { schema: z.object({ appointment: AppointmentSchema }) } } },
+    409: { description: "Staff member is already busy", content: { "application/json": { schema: ConflictSchema } } },
   },
 });
 
@@ -382,6 +436,14 @@ app.openapi(createAppointment, async (c) => {
   }
 
   const endTime = addMinutes(startTime, totalDuration);
+
+  // Nothing to contend for when the booking is unassigned.
+  if (body.staff_id && !body.allow_conflict) {
+    const conflicts = findConflicts(startTime, endTime, await busyFor(body.staff_id, body.scheduled_date));
+    if (conflicts.length > 0) {
+      return c.json({ error: describeConflicts(await staffName(body.staff_id), conflicts), conflicts }, 409);
+    }
+  }
 
   const result = await run(
     `INSERT INTO appointments (identifier, client_id, staff_id, scheduled_date, start_time, end_time, total_price, notes, is_recurring, recurrence_interval)
@@ -432,26 +494,62 @@ const updateAppointment = createRoute({
       end_time: z.string().optional(),
       total_price: z.number().optional(),
       notes: z.string().optional(),
+      allow_conflict: z.boolean().optional().openapi({
+        description: "Move the appointment even though the staff member is already busy then.",
+      }),
     }) } } },
   },
   responses: {
     200: { description: "Updated", content: { "application/json": { schema: OkSchema } } },
+    400: { description: "Invalid times", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Staff member is already busy", content: { "application/json": { schema: ConflictSchema } } },
   },
 });
 
 app.openapi(updateAppointment, async (c) => {
   const { id } = c.req.valid("param");
-  const body = c.req.valid("json");
+  const { allow_conflict, ...body } = c.req.valid("json");
+
+  const existing = await get<{
+    staff_id: number | null; scheduled_date: string; start_time: string; end_time: string;
+  }>("SELECT staff_id, scheduled_date, start_time, end_time FROM appointments WHERE id = ?", [id]);
+  if (!existing) return c.json({ error: "Not found" }, 404);
+
+  // Where the appointment lands once this patch is applied.
+  const staffId = body.staff_id !== undefined ? body.staff_id : existing.staff_id;
+  const date = body.scheduled_date ?? existing.scheduled_date;
+  const startTime = body.start_time ?? existing.start_time;
+
+  // Moving an appointment keeps its length. Without this, patching start_time
+  // alone left the old end_time behind and silently resized the booking.
+  let endTime = body.end_time;
+  if (endTime === undefined) {
+    const was = toMinutes(existing.start_time);
+    const wasEnd = toMinutes(existing.end_time);
+    const duration = was !== null && wasEnd !== null ? Math.max(wasEnd - was, 0) : 0;
+    endTime = addMinutes(startTime, duration);
+  }
+
+  const start = toMinutes(startTime);
+  const end = toMinutes(endTime);
+  if (start === null || end === null) return c.json({ error: "Times must be HH:MM" }, 400);
+  if (end <= start) return c.json({ error: "The appointment must end after it starts" }, 400);
+
+  if (staffId && !allow_conflict) {
+    const conflicts = findConflicts(startTime, endTime, await busyFor(staffId, date, Number(id)));
+    if (conflicts.length > 0) {
+      return c.json({ error: describeConflicts(await staffName(staffId), conflicts), conflicts }, 409);
+    }
+  }
+
   const sets: string[] = [];
   const params: unknown[] = [];
-
-  for (const [key, val] of Object.entries(body)) {
+  for (const [key, val] of Object.entries({ ...body, start_time: startTime, end_time: endTime })) {
     if (val !== undefined) { sets.push(`${key} = ?`); params.push(val); }
   }
-  if (sets.length > 0) {
-    sets.push("updated_at = datetime('now')");
-    await run(`UPDATE appointments SET ${sets.join(", ")} WHERE id = ?`, [...params, id]);
-  }
+  sets.push("updated_at = datetime('now')");
+  await run(`UPDATE appointments SET ${sets.join(", ")} WHERE id = ?`, [...params, id]);
   return c.json({ ok: true }, 200);
 });
 
