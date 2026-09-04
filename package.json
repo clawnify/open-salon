@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler d1 execute open-salon-db --local --file=src/server/schema.sql && concurrently -n ui,api -c cyan,green \"vite\" \"wrangler dev --port 8787\"",
-    "build": "vite build"
+    "build": "vite build",
+    "test": "node --experimental-strip-types --test 'src/**/*.test.ts'"
   },
   "dependencies": {
     "@clawnify/app": "^0.1.0",

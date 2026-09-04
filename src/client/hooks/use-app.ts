@@ -148,6 +148,7 @@ export function useAppState(isAgent: boolean, navigate: (to: string) => void): A
   const addAppointment = useCallback(async (data: {
     client_id: number; staff_id?: number | null; scheduled_date: string;
     start_time?: string; notes?: string; is_recurring?: number; recurrence_interval?: string; service_ids?: number[];
+    allow_conflict?: boolean;
   }) => {
     await api("POST", "/api/appointments", data);
     await fetchAppointments(appointmentsPag, appointmentsSearch, appointmentsStatusFilter);

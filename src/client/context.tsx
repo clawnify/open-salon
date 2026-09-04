@@ -27,6 +27,7 @@ export interface AppContextValue {
     is_recurring?: number;
     recurrence_interval?: string;
     service_ids?: number[];
+    allow_conflict?: boolean;
   }) => Promise<void>;
   updateAppointment: (id: number, data: Partial<Appointment>) => Promise<void>;
   deleteAppointment: (id: number) => Promise<void>;

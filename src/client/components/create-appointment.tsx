@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 import { useApp } from "../context";
-import { X } from "lucide-preact";
+import { X, TriangleAlert } from "lucide-preact";
+import { conflictsFrom, describeConflict, type Conflict } from "@/lib/conflicts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +23,7 @@ export function CreateAppointment({ onClose, defaultDate }: Props) {
   const [selectedServices, setSelectedServices] = useState<number[]>([]);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [conflicts, setConflicts] = useState<Conflict[] | null>(null);
 
   const toggleService = (id: number) => {
     setSelectedServices((prev) =>
@@ -37,9 +39,10 @@ export function CreateAppointment({ onClose, defaultDate }: Props) {
     .filter((s) => selectedServices.includes(s.id))
     .reduce((sum, s) => sum + s.duration, 0);
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (allowConflict = false) => {
     if (!clientId) { setError("Please select a client"); return; }
     setSaving(true);
+    setConflicts(null);
     try {
       await addAppointment({
         client_id: parseInt(clientId),
@@ -48,10 +51,15 @@ export function CreateAppointment({ onClose, defaultDate }: Props) {
         start_time: startTime,
         notes,
         service_ids: selectedServices,
+        ...(allowConflict ? { allow_conflict: true } : {}),
       });
       onClose();
     } catch (err) {
-      setError((err as Error).message);
+      // A clash is answered in the form, next to the time that caused it, rather
+      // than thrown at the page as a failure: the booking is one field away.
+      const clashes = conflictsFrom(err);
+      if (clashes) setConflicts(clashes);
+      else setError((err as Error).message);
     } finally {
       setSaving(false);
     }
@@ -74,7 +82,7 @@ export function CreateAppointment({ onClose, defaultDate }: Props) {
             </div>
             <div className="space-y-1.5">
               <Label>Staff</Label>
-              <select className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={staffId} onChange={(e) => setStaffId((e.target as HTMLSelectElement).value)}>
+              <select className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={staffId} onChange={(e) => { setStaffId((e.target as HTMLSelectElement).value); setConflicts(null); }}>
                 <option value="">Unassigned</option>
                 {staffLookup.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
@@ -83,11 +91,11 @@ export function CreateAppointment({ onClose, defaultDate }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Date</Label>
-              <Input type="date" value={date} onChange={(e) => setDate((e.target as HTMLInputElement).value)} />
+              <Input type="date" value={date} onChange={(e) => { setDate((e.target as HTMLInputElement).value); setConflicts(null); }} />
             </div>
             <div className="space-y-1.5">
               <Label>Start Time</Label>
-              <Input type="time" value={startTime} onChange={(e) => setStartTime((e.target as HTMLInputElement).value)} />
+              <Input type="time" value={startTime} onChange={(e) => { setStartTime((e.target as HTMLInputElement).value); setConflicts(null); }} />
             </div>
           </div>
 
@@ -123,9 +131,30 @@ export function CreateAppointment({ onClose, defaultDate }: Props) {
             <Textarea rows={3} placeholder="Special requests, preferences..." value={notes} onChange={(e) => setNotes((e.target as HTMLTextAreaElement).value)} />
           </div>
         </div>
+        {conflicts && (
+          <div className="flex gap-2.5 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+            <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" aria-hidden="true" />
+            <div className="space-y-1">
+              <p className="font-medium">
+                {staffLookup.find((s) => String(s.id) === staffId)?.name ?? "That staff member"} is not free then.
+              </p>
+              <ul className="text-muted-foreground">
+                {conflicts.map((c) => (
+                  <li key={`${c.start_time}-${c.label}`}>{describeConflict(c)}</li>
+                ))}
+              </ul>
+              <p className="text-muted-foreground">Pick another time or staff member, or book it anyway.</p>
+            </div>
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button disabled={saving} onClick={handleSubmit}>
+          {conflicts && (
+            <Button variant="outline" disabled={saving} onClick={() => handleSubmit(true)}>
+              Book anyway
+            </Button>
+          )}
+          <Button disabled={saving} onClick={() => handleSubmit()}>
             {saving ? "Booking..." : "Create Booking"}
           </Button>
         </DialogFooter>

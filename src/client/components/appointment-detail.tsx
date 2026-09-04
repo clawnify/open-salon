@@ -7,18 +7,31 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { StatusBadge } from "./status-badge";
+import { conflictsFrom, conflictSentence } from "@/lib/conflicts";
 
 export function AppointmentDetail() {
   const {
     selectedAppointment: apt, navigate, updateAppointment, deleteAppointment,
-    addAppointmentNote, deleteAppointmentNote, staffLookup,
+    addAppointmentNote, deleteAppointmentNote, staffLookup, setError,
   } = useApp();
   const [noteText, setNoteText] = useState("");
 
   if (!apt) return null;
 
-  const handleStatusChange = (status: string) => updateAppointment(apt.id, { status } as Partial<typeof apt>);
-  const handleStaffChange = (staffId: string) => updateAppointment(apt.id, { staff_id: staffId ? parseInt(staffId) : null } as Partial<typeof apt>);
+  // Reassigning can now be refused, because the new person may already be busy.
+  const save = async (patch: Partial<typeof apt>) => {
+    try {
+      await updateAppointment(apt.id, patch);
+    } catch (err) {
+      const clashes = conflictsFrom(err);
+      setError(clashes
+        ? conflictSentence(staffLookup.find((s) => s.id === patch.staff_id)?.name ?? "", clashes)
+        : (err as Error).message);
+    }
+  };
+
+  const handleStatusChange = (status: string) => save({ status } as Partial<typeof apt>);
+  const handleStaffChange = (staffId: string) => save({ staff_id: staffId ? parseInt(staffId) : null } as Partial<typeof apt>);
 
   const handleAddNote = async () => {
     if (!noteText.trim()) return;
