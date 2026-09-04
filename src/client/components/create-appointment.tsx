@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { today } from "@/lib/dates";
 
 interface Props {
   onClose: () => void;
@@ -17,7 +18,7 @@ export function CreateAppointment({ onClose, defaultDate }: Props) {
   const { addAppointment, clientLookup, staffLookup, services, setError } = useApp();
   const [clientId, setClientId] = useState("");
   const [staffId, setStaffId] = useState("");
-  const [date, setDate] = useState(defaultDate || new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(defaultDate || today());
   const [startTime, setStartTime] = useState("09:00");
   const [selectedServices, setSelectedServices] = useState<number[]>([]);
   const [notes, setNotes] = useState("");

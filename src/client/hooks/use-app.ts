@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "preact/hooks";
 import { api } from "../api";
+import { today } from "../lib/dates";
 import type {
   Appointment, Client, Staff, Service, Product, BlockedSlot, Stats, PaginatedState,
   ClientLookup, StaffLookup,
@@ -19,7 +20,7 @@ export function useAppState(isAgent: boolean, navigate: (to: string) => void): A
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
 
   // Calendar
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = today();
   const [calendarDate, setCalendarDate] = useState(todayStr);
   const [calendarAppointments, setCalendarAppointments] = useState<Appointment[]>([]);
   const [calendarBlocked, setCalendarBlocked] = useState<BlockedSlot[]>([]);
