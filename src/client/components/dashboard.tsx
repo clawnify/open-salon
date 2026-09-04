@@ -3,11 +3,12 @@ import { CalendarDays, Users, Clock, DollarSign, Package, AlertTriangle } from "
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { today } from "@/lib/dates";
 
 export function Dashboard() {
   const { stats, navigate, calendarAppointments } = useApp();
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = today();
   const todayAppointments = calendarAppointments
     .filter((a) => a.scheduled_date === todayStr)
     .sort((a, b) => a.start_time.localeCompare(b.start_time));

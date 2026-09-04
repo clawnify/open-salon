@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CreateAppointment } from "./create-appointment";
 import { cn } from "@/lib/utils";
+import { parseDate, shiftDate, today } from "@/lib/dates";
 
 const HOURS = Array.from({ length: 14 }, (_, i) => i + 7); // 7 AM to 8 PM
 
@@ -34,14 +35,10 @@ export function CalendarView() {
   const [blockEnd, setBlockEnd] = useState("13:00");
   const [blockReason, setBlockReason] = useState("");
 
-  const dateObj = new Date(calendarDate + "T00:00:00");
-  const todayStr = new Date().toISOString().split("T")[0];
+  const dateObj = parseDate(calendarDate);
+  const todayStr = today();
 
-  const shiftDay = (delta: number) => {
-    const d = new Date(calendarDate + "T00:00:00");
-    d.setDate(d.getDate() + delta);
-    setCalendarDate(d.toISOString().split("T")[0]);
-  };
+  const shiftDay = (delta: number) => setCalendarDate(shiftDate(calendarDate, delta));
 
   const dayStart = HOURS[0] * 60;
   const dayEnd = (HOURS[HOURS.length - 1] + 1) * 60;
